@@ -1,0 +1,66 @@
+#!/usr/bin/bash
+
+HELP_MESSAGE=$(cat << EOF
+This program filters the contents of '/var/log/paclog'.
+
+Usage: $(basename "$0") [-u, --upgraded] [-r, --removed] [-i, --installed] [DAYS]
+'--upgraded', '--removed' and '--installed' filter results down to the messages containing the according strings.
+1, 2 or all 3 can be used. If none is selected, all of them are used by default.
+
+'DAYS' is the number of days in the past for which to grep for lines (defaults to 0).
+EOF
+)
+
+# Parse command line input
+VALID_ARGS=$(getopt -o urih --long upgraded,removed,installed,help -- "$@")
+eval set -- "$VALID_ARGS"
+while [ : ]; do
+  case "$1" in
+    -u | --upgraded)
+        UPGRADED="upgraded"
+        shift
+        ;;
+    -r | --removed)
+        REMOVED="removed"
+        shift
+        ;;
+    -i | --installed)
+        INSTALLED="installed"
+        shift
+        ;;
+    -h | --help)
+        echo "$HELP_MESSAGE"
+        exit 0
+        ;;
+    --)
+        shift; 
+        break 
+        ;;
+  esac
+done
+
+# Use all if none are set
+if [ -z "$UPGRADED" ] && [ -z "$REMOVED" ] && [ -z "$INSTALLED" ];then
+    UPGRADED="upgraded"
+    REMOVED="removed"
+    INSTALLED="installed"
+# Turn empty variables into "_" to avoid empty strings matching every line
+else
+    UPGRADED=${UPGRADED:-_}
+    REMOVED=${REMOVED:-_}
+    INSTALLED=${INSTALLED:-_}
+    
+fi
+
+# Use remaining argument as days. Use 0 days if no argument is provided
+DAYS=${@:$OPTIND:1}
+DAYS=${DAYS:-0}
+
+# Grep for log entries and prettify
+for (( x="$DAYS"; x>=0; x-- ))
+do
+    d=$(date +"%Y-%m-%d" -d "-$x days")
+    grep -P "\[$d.*\] \[.*\] ($INSTALLED|$UPGRADED|$REMOVED).*" /var/log/pacman.log | \
+    cut -d ' ' -f 1,3,4 | \
+    sed -e 's/\[\(.*\)T.*\]/\1:/g'
+done
